@@ -1,4 +1,16 @@
-const URL_BASE = "https://github.com/marcioHUNK/lost-lenore/raw/refs/heads/master/documentos/";
+const GOOGLE_DOCS_IDS = {
+  "historia.docx": "1etVlnKLC1AkMwa27NIwCgx7d7pwktxu_T9-fGMvT2dE",
+  "locais.docx": "19qfFxez5tLbouazw3KE0Ttf2XCdYaazUMoSSDAKBRmc",
+  "npc.docx": "1jnKbHo_AyEM8whNhSYNXUuW4rxIpoZVSmb2xcEEdzZk"
+};
+
+const CORS_PROXY_KEY = "db36ad33";
+
+function urlDoDocx(nomeArquivo) {
+  const id = GOOGLE_DOCS_IDS[nomeArquivo];
+  const urlExport = `https://docs.google.com/document/d/${id}/export?format=docx&_=${Date.now()}`;
+  return `https://corsproxy.io/?key=${CORS_PROXY_KEY}&url=${encodeURIComponent(urlExport)}`;
+}
 
 function gerarSlug(texto) {
   return texto
@@ -9,24 +21,52 @@ function gerarSlug(texto) {
     .replace(/[^a-z0-9]+/g, "-");
 }
 
-async function carregarNpcs() {
-  //const resposta = await fetch("documentos/npc.docx");
-  const resposta = await fetch(URL_BASE + "npc.docx");
-  const buffer = await resposta.arrayBuffer();
-  const resultado = await mammoth.convertToHtml({ arrayBuffer: buffer });
 
-  const container = document.getElementById("conteudo-npcs");
-  container.innerHTML = resultado.value;
-
-  const headings = container.querySelectorAll("h1, h2, h3");
-  headings.forEach((heading) => {
-    heading.id = gerarSlug(heading.textContent);
+function corrigirLinksLocais(container) {
+  const links = container.querySelectorAll("a");
+  links.forEach((link) => {
+    const hrefOriginal = link.getAttribute("href");
+    if (!hrefOriginal) return;
+    try {
+      const url = new URL(hrefOriginal);
+      if (/\.html$/i.test(url.hostname)) {
+        const caminho = url.pathname === "/" ? "" : url.pathname;
+        link.setAttribute("href", `${window.location.origin}/${url.hostname}${caminho}${url.search}${url.hash}`);
+      }
+    } catch (e) {
+    }
   });
+}
 
-  const secoes = agruparEmSecoes(container);
-  montarCabecalhoComImagem(secoes);
-  criarLinkVerTodos();
-  aplicarFiltro();
+async function carregarNpcs() {
+  const container = document.getElementById("conteudo-npcs");
+  try {
+    const resposta = await fetch(urlDoDocx("npc.docx"), { cache: "no-store" });
+    if (!resposta.ok) throw new Error(`Erro ${resposta.status} ao buscar npc.docx`);
+    const buffer = await resposta.arrayBuffer();
+    const resultado = await mammoth.convertToHtml({ arrayBuffer: buffer });
+
+    container.innerHTML = resultado.value;
+        const links = container.querySelectorAll("a");
+    links.forEach((link) => {
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+    });
+
+    const headings = container.querySelectorAll("h1, h2, h3");
+    headings.forEach((heading) => {
+      heading.id = gerarSlug(heading.textContent);
+    });
+
+    const secoes = agruparEmSecoes(container);
+    corrigirLinksLocais(container);
+    montarCabecalhoComImagem(secoes);
+    criarLinkVerTodos();
+    aplicarFiltro();
+  } catch (erro) {
+    console.error(erro);
+    container.innerHTML = "<p>Não foi possível carregar o conteúdo. Tente novamente mais tarde.</p>";
+  }
 }
 
 function agruparEmSecoes(container) {
